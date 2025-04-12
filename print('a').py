@@ -1,0 +1,140 @@
+import os
+import argparse
+import datetime
+import re
+import stat
+import time
+
+def find_files(start_path, **options):
+    """
+    재귀적으로 디렉토리를 순회하면서 주어진 조건에 맞는 파일이나 디렉토리를 찾습니다.
+    
+    Args:
+        start_path (str): 검색을 시작할 디렉토리 경로
+        **options: 검색 조건 옵션들
+    """
+    # 기준 파일의 수정 시간 가져오기 (newer 옵션용)
+    newer_than_time = None
+    if options.get('newer_than_file'):
+        try:
+            newer_than_time = os.path.getmtime(options['newer_than_file'])
+        except (FileNotFoundError, PermissionError):
+            print(f"Error: Cannot access reference file '{options['newer_than_file']}'")
+            return
+
+    # mtime 옵션 처리를 위한 현재 시간 가져오기
+    current_time = time.time()
+    
+    # 디렉토리 순회를 위한 os.walk 사용
+    for root, dirs, files in os.walk(start_path):
+        # 모든 항목(파일+디렉토리)에 대해 반복
+        all_items = [(name, os.path.join(root, name), 'f') for name in files]
+        all_items.extend([(name, os.path.join(root, name), 'd') for name in dirs])
+        
+        for name, path, item_type in all_items:
+            # 각 옵션에 따른 조건 확인
+            match = True
+            
+            # -type 옵션 확인
+            if options.get('type') and options['type'] != item_type:
+                match = False
+                
+            # -name 옵션 확인 (정규식 지원)
+            if options.get('name') and match:
+                try:
+                    if not re.search(options['name'], name):
+                        match = False
+                except re.error:
+                    # 정규식 패턴이 유효하지 않을 경우 정확한 문자열 매칭으로 시도
+                    if name != options['name']:
+                        match = False
+            
+            # 나머지 옵션들은 파일 속성에 접근해야 하므로 파일 상태 정보 가져오기
+            try:
+                file_stat = os.stat(path)
+            except (FileNotFoundError, PermissionError):
+                continue
+                
+            # -newer 옵션 확인
+            if options.get('newer_than_file') and match and newer_than_time:
+                if file_stat.st_mtime <= newer_than_time:
+                    match = False
+            
+            # -size 옵션 확인 (단위: 512바이트 블록)
+            if options.get('size') and match:
+                size_str = options['size']
+                size_val = size_str[1:] if size_str[0] in ['+', '-'] else size_str
+                try:
+                    size_val = int(size_val)
+                    # 512바이트 블록 단위로 변환
+                    file_size_blocks = file_stat.st_size / 512
+                    
+                    if size_str.startswith('+') and file_size_blocks <= size_val:
+                        match = False
+                    elif size_str.startswith('-') and file_size_blocks >= size_val:
+                        match = False
+                    elif not size_str.startswith('+') and not size_str.startswith('-') and file_size_blocks != size_val:
+                        match = False
+                except ValueError:
+                    match = False
+            
+            # -perm 옵션 확인
+            if options.get('perm') and match:
+                try:
+                    # 8진수 문자열을 정수로 변환
+                    requested_mode = int(options['perm'], 8)
+                    # 파일 모드에서 하위 9비트(rwxrwxrwx)만 비교
+                    actual_mode = file_stat.st_mode & 0o777
+                    if actual_mode != requested_mode:
+                        match = False
+                except ValueError:
+                    match = False
+            
+            # -mtime 옵션 확인
+            if options.get('mtime') and match:
+                mtime_str = options['mtime']
+                try:
+                    # 첫 문자가 +나 -인지 확인
+                    if mtime_str.startswith('+'):
+                        days = int(mtime_str[1:])
+                        comparison = '>'
+                    elif mtime_str.startswith('-'):
+                        days = int(mtime_str[1:])
+                        comparison = '<'
+                    else:
+                        days = int(mtime_str)
+                        comparison = '='
+                    
+                    # 파일 수정 시간 (초 단위)와 현재 시간의 차이를 일 단위로 변환
+                    days_diff = (current_time - file_stat.st_mtime) / (24 * 3600)
+                    
+                    if comparison == '>' and days_diff <= days:
+                        match = False
+                    elif comparison == '<' and days_diff >= days:
+                        match = False
+                    elif comparison == '=' and (days_diff < days or days_diff >= days + 1):
+                        match = False
+                except ValueError:
+                    match = False
+            
+            # 모든 조건을 만족하면 결과 출력
+            if match:
+                print(path)
+
+def main():
+    parser = argparse.ArgumentParser(description='Python implementation of the find command')
+    parser.add_argument('start_path', type=str, help='Starting directory path')
+    parser.add_argument('-name', type=str, help='File name pattern to search for (regular expression supported)')
+    parser.add_argument('-type', type=str, choices=['f', 'd'], help='File type (f for file, d for directory)')
+    parser.add_argument('-newer', type=str, help='File to compare modification time against')
+    parser.add_argument('-size', type=str, help='File size (+n for greater than n*512 bytes, -n for less than n*512 bytes, n for exactly n*512 bytes)')
+    parser.add_argument('-perm', type=str, help='File permission (e.g., 644)')
+    parser.add_argument('-mtime', type=str, help='File modification time (-n for within n days, +n for older than n days, n for exactly n days ago)')
+
+    args = parser.parse_args()
+
+    find_files(args.start_path, name=args.name, type=args.type, 
+               newer_than_file=args.newer, size=args.size, perm=args.perm, mtime=args.mtime)
+
+if __name__ == '__main__':
+    main()
