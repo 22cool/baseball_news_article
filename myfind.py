@@ -5,14 +5,9 @@ import re
 import stat
 import time
 
+
 def find_files(start_path, **options):
-    """
-    재귀적으로 디렉토리를 순회하면서 주어진 조건에 맞는 파일이나 디렉토리를 찾습니다.
-    
-    Args:
-        start_path (str): 검색을 시작할 디렉토리 경로
-        **options: 검색 조건 옵션들
-    """
+
     # 기준 파일의 수정 시간 가져오기 (newer 옵션용)
     newer_than_time = None
     if options.get('newer_than_file'):
@@ -32,9 +27,13 @@ def find_files(start_path, **options):
         all_items.extend([(name, os.path.join(root, name), 'd') for name in dirs])
         
         for name, path, item_type in all_items:
+
+            if name.startswith('.'):
+                continue
+            
             # 각 옵션에 따른 조건 확인
             match = True
-            
+
             # -type 옵션 확인
             if options.get('type') and options['type'] != item_type:
                 match = False
@@ -60,14 +59,13 @@ def find_files(start_path, **options):
                 if file_stat.st_mtime <= newer_than_time:
                     match = False
             
-            # -size 옵션 확인 (단위: 512바이트 블록)
+            # 지정된 크기와 비교하여 파일 찾기
             if options.get('size') and match:
                 size_str = options['size']
                 size_val = size_str[1:] if size_str[0] in ['+', '-'] else size_str
                 try:
                     size_val = int(size_val)
-                    # 512바이트 블록 단위로 변환
-                    file_size_blocks = file_stat.st_size / 512
+                    file_size_blocks = file_stat.st_size/512 #512로 변환
                     
                     if size_str.startswith('+') and file_size_blocks <= size_val:
                         match = False
@@ -117,9 +115,10 @@ def find_files(start_path, **options):
                 except ValueError:
                     match = False
             
-            # 모든 조건을 만족하면 결과 출력
             if match:
-                print(path)
+                relative_path = os.path.relpath(path, start_path)
+                print('./' + relative_path.replace('\\', '/'))
+
 
 def main():
     parser = argparse.ArgumentParser(description='Python implementation of the find command')
