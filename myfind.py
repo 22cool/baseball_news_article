@@ -2,11 +2,10 @@ import os
 import argparse
 import datetime
 import re
-import stat
-import time
 
 
 def find_files(start_path, **options):
+    import time
 
     # 기준 파일의 수정 시간 가져오기 (newer 옵션용)
     newer_than_time = None
@@ -28,38 +27,33 @@ def find_files(start_path, **options):
         
         for name, path, item_type in all_items:
 
-            if name.startswith('.'):
+            if name.startswith('.'): #숨겨진 파일 무시(.)으로 시작
                 continue
-            
+
             # 각 옵션에 따른 조건 확인
             match = True
 
-            # -type 옵션 확인
+            # -name
+            if options.get('name') and match:
+                if name != options['name']:
+                    match = False
+
+            # -type
             if options.get('type') and options['type'] != item_type:
                 match = False
-                
-            # -name 옵션 확인 (정규식 지원)
-            if options.get('name') and match:
-                try:
-                    if not re.search(options['name'], name):
-                        match = False
-                except re.error:
-                    # 정규식 패턴이 유효하지 않을 경우 정확한 문자열 매칭으로 시도
-                    if name != options['name']:
-                        match = False
             
-            # 나머지 옵션들은 파일 속성에 접근해야 하므로 파일 상태 정보 가져오기
+            # 아래 옵션들은 파일 속성에 접근해야 하므로 파일 정보 가져오기
             try:
                 file_stat = os.stat(path)
             except (FileNotFoundError, PermissionError):
                 continue
                 
-            # -newer 옵션 확인
+            # -newer
             if options.get('newer_than_file') and match and newer_than_time:
                 if file_stat.st_mtime <= newer_than_time:
                     match = False
             
-            # 지정된 크기와 비교하여 파일 찾기
+            #   size
             if options.get('size') and match:
                 size_str = options['size']
                 size_val = size_str[1:] if size_str[0] in ['+', '-'] else size_str
@@ -76,7 +70,7 @@ def find_files(start_path, **options):
                 except ValueError:
                     match = False
             
-            # -perm 옵션 확인
+            # -perm
             if options.get('perm') and match:
                 try:
                     # 8진수 문자열을 정수로 변환
@@ -88,22 +82,22 @@ def find_files(start_path, **options):
                 except ValueError:
                     match = False
             
-            # -mtime 옵션 확인
+            # -mtime
             if options.get('mtime') and match:
                 mtime_str = options['mtime']
                 try:
                     # 첫 문자가 +나 -인지 확인
                     if mtime_str.startswith('+'):
                         days = int(mtime_str[1:])
-                        comparison = '>'
+                        comparison = '>' 
                     elif mtime_str.startswith('-'):
                         days = int(mtime_str[1:])
                         comparison = '<'
                     else:
                         days = int(mtime_str)
-                        comparison = '='
+                        comparison = '=' 
                     
-                    # 파일 수정 시간 (초 단위)와 현재 시간의 차이를 일 단위로 변환
+                    # 파일 수정 시간과 현재 시간의 차이를 일 단위로 변환
                     days_diff = (current_time - file_stat.st_mtime) / (24 * 3600)
                     
                     if comparison == '>' and days_diff <= days:
@@ -117,7 +111,7 @@ def find_files(start_path, **options):
             
             if match:
                 relative_path = os.path.relpath(path, start_path)
-                print('./' + relative_path.replace('\\', '/'))
+                print('./' + relative_path.replace('\\', '/')) #출력되는 슬래시 방향이 달라 수정함
 
 
 def main():
