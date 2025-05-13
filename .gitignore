@@ -1,0 +1,6 @@
+__pycache__/
+.vscode/
+testdir/
+make_test_env.py
+myfind.py
+perm.py
