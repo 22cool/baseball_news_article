@@ -6,6 +6,7 @@ import time
 from urllib.parse import quote_plus
 import os
 
+##test
 def ex_tag(team, page):
 
     # 야구 구단(team)과 페이지(page)를 입력받아 그에 대한 링크들을 리스트로 추출
